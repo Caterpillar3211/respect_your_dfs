@@ -1,89 +1,35 @@
-import numpy as np
 import pandas as pd
-from sklearn.base import BaseEstimator, TransformerMixin
+import numpy as np
+
+from sklearn.base import TransformerMixin
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.impute import SimpleImputer as Imputer
-from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+
+from .helpers import encoded_array_to_df_compatible_array
+from .base import ShapeException, NotADataFrameException, Transformer
 
 
+class Merger(TransformerMixin):
 
+    """ 
+    Merger Object
 
-class ShapeException(Exception):
-    """ An exception caused by transformation when 
-    the array is out of shape with columns. """
-    
+    It is used to merge dataframes with given columns.
+    It is probably useful only for pipelines, as you
+    can easily achieve the same result with basic pandas operations.
 
+    Unlike other objects, it does not inherit Transformer class,
+    as it doesn't need to transform dataframe to array or vice-versa.
 
-class NotADataFrameException(Exception):
-    """ An exception occuring when trying to 
-    transform something that is not a dataframe. """
+    You can specify column_names and column_values upon creating the object,
+    or call  'new_merge'  method with those parameters.
 
+    If X parameter of transformation is not a dataframe, raises an exception.
+    """
 
-
-class DFTransformer(BaseEstimator, TransformerMixin):
-
-    def __init__(self, columns=None):
-        self._columns = columns
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X, y=None):
-        if isinstance(X, pd.DataFrame):
-            if self._columns:
-                # convert to array ( with given columns )
-                return X[self._columns].values
-            else:
-                # convert to array ( with all columns )
-                self._columns = X.columns
-                return X.values
-        elif isinstance(X, np.ndarray):
-            if X.shape[1] != len(self._columns):
-                print(f'Array out of shape, mismatched columns.\
-                        Got {X.shape[1]}, Expected {len(self._columns)}')
-                raise ShapeException
-            return pd.DataFrame(X, columns=self._columns)
-
-    def fit_transform(self, X, y=None):
-        return self.fit(X, y=None).transform(X, y=None)
-
-    @property    
-    def columns(self):
-        return self._columns
-
-    @columns.setter
-    def columns(self, columns):
-        self._columns = columns
-
-
-
-class Merger(BaseEstimator, TransformerMixin):
-
-    def __init__(self, cols_names, cols_values):
-        self._columns_names = cols_names
-        self._columns_values = cols_values
-
-    def new_merge(self, cols_names, cols_values):
-        self._columns_names = cols_names
-        self._columns_values = cols_values
-        return self
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X, y=None):
-        for values, name in zip(self._columns_values, self._columns_names):
-            X[name] = values
-        return X
-
-
-
-class CategoryEncoder(BaseEstimator, TransformerMixin):
-
-    def __init__(self, merger, categories):
-        self._categories = categories
-        self.merger = merger
-        self.encoder = OneHotEncoder()
+    def __init__(self, cols_names=None, cols_values=None):
+        self._cols_names = cols_names
+        self._cols_values = cols_values
 
     def fit(self, X, y=None):
         return self
@@ -91,20 +37,77 @@ class CategoryEncoder(BaseEstimator, TransformerMixin):
     def transform(self, X, y=None):
         if not isinstance(X, pd.DataFrame):
             raise NotADataFrameException
-        values = self.encoder.fit_transform(X[self._categories]).toarray()
-        values = self.encoded_array_to_df_compatible_array(values)
-        features = self.encoder.get_feature_names()
-        return self.merger.new_merge(features, values).transform(X.drop(self._categories, axis=1))
+        for name, values in zip(self._cols_names, self._cols_values):
+            X[name] = values
+        return X
 
-    @staticmethod
-    def encoded_array_to_df_compatible_array(array):
-        new = []
-        for index in range(array.shape[1]):
-            new.append([])
-            for row in array:
-                new[index].append(row[index])
-        return np.array(new)
+    def new_merge(self, cols_names, cols_values):
+        self._cols_names = cols_names
+        self._cols_values = cols_values
+        return self
 
 
+class CategoryEncoder(Transformer, TransformerMixin):
+
+    """ 
+    CategoryEncoder object
+
+    Upon creation, you should specify column names that will be encoded.
+    Alternatively you can set them with set_columns method, or display them
+    with get_columns method.
+
+    It is used to encode categorical attributes of the dataframe.
+    It contains it's merger  _merger  , as well as specified encoder  _encoder  .
+
+    Possible encodings:
+        - 'onehot'
+    """
+
+    def __init__(self, columns, encoder='onehot', encoder_params=[]):
+        self._columns = columns
+        self._merger = Merger()
+        self._encoder_type = encoder
+        if self._encoder_type == 'onehot':
+            self._encoder = OneHotEncoder(*encoder_params)
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X, y=None):
+        if not isinstance(X, pd.DataFrame):
+            raise NotADataFrameException
+        if self._encoder_type == 'onehot':
+            values = self._encoder.fit_transform(X[self._columns]).toarray()
+            values = encoded_array_to_df_compatible_array(values)
+            features = self._encoder.get_feature_names()
+            features = [feature[3:] for feature in features]
+            return self._merger.new_merge(features, values).fit_transform(X.drop(self._columns, axis=1), y)
 
 
+class Imputer(Transformer, TransformerMixin):
+
+    """ 
+    Imputer object
+
+    It is a wrapper around sklearn.impute.SimpleImputer,
+    all it does, is that it takes dataframe as an input, which is transformed
+    into np.ndarray, fed into actual SimpleImputer object, and the result is returned
+    as a dataframe, with the same exact columns.
+    """
+
+    def __init__(self, missing_values=np.nan, strategy='mean', fill_value=None, verbose=0, copy=True, add_indicator=False):
+        self._imputer = SimpleImputer(
+            missing_values, strategy, fill_value, verbose, copy, add_indicator)
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X, y=None):
+
+        if isinstance(X, pd.DataFrame):
+            self._columns = X.columns
+            X_tr = self._imputer.fit_transform(self._to_array(X))
+            X_tr = self._to_df(X_tr)
+            return X_tr
+        else:
+            return self._imputer.fit_transform(X, y)

@@ -116,6 +116,27 @@ class Imputer(Transformer, TransformerMixin):
 
 class AttributeAdder(TransformerMixin):
 
+    """
+    AttributeAdder object 
+
+    It is used to add new columns (features) to the dataframe.
+
+    Methods:
+        __init__(name, function, parameters) <- 'name' is the label of new column, 
+                                                'function' is a function upon which the values will be created,
+                                                'parameters' is a list of column names (str) and/or constant parameters.
+
+        new_attribute(name, function, parameters) <- ...
+
+        fit(X, y) <- returns itself.
+
+        transform(X, y) <- performs the transformation (adds new attribute) on the dataframe and returns it.
+
+        fit_transform(X, y) <- combined  fit(X, y)  and  transform(X, y). 
+                               This is advised in most cases just to stay friendly with sklearn module.
+
+    """
+
     def __init__(self, name, function, parameters):
         self.name = name
         self.function = function
@@ -140,6 +161,33 @@ class AttributeAdder(TransformerMixin):
 
 
 class Pipesystem(TransformerMixin):
+
+    """
+    Pipesystem object 
+
+    It works (it has less features though) as  sklearn.Pipeline  .
+
+    Methods:
+    
+        __init__(verbose[, False]) <- if 'verbose' is True, then everytime a transformation is made,
+                                      it will print out the information about it.
+
+        new_pipe(pipe_set, always_active[, True]) <- creates a new pipe (ordered),
+                                                     pipe_set is expected to be a tuple of name and object
+                                                     ( in that order ). always_active  does not have any functionality
+                                                     at this moment. It is expected for it to be a indicator for automatic
+                                                     dataframe modeling for best predictions later on.
+    
+        show_pipeline() <- returns an ordered list with all current pipes.
+
+        fit(X, y) <- returns itself.
+
+        transform(X, y) <- performs all transformations (from all pipes) on the dataframe and returns it.
+
+        fit_transform(X, y) <- combined  fit(X, y)  and  transform(X, y). 
+                               This is advised in most cases just to stay friendly with sklearn module.
+
+    """
 
     def __init__(self, verbose=False):
         self._pipes = []
@@ -170,7 +218,7 @@ class Pipesystem(TransformerMixin):
                 out.append(name)
         return out
 
-    def activate_array(self, array):
+    def _activate_array(self, array):
         for value, name, _ in zip(array, self._pipes):
             if not value:
                 self._disable_pipe(name)
@@ -180,6 +228,42 @@ class Pipesystem(TransformerMixin):
 
 
 class OptimizedPipesystem(Pipesystem):
+
+    """
+    OptimizedPipesystem object 
+
+    Enhanced  rdfs.Pipesystem  , it uses one of the optimiztion methods to determine
+    the most promising features without actually training a model.
+
+    One way of optimization (and currently, the only one implemented) is correlation.
+    Upon object creation, specify  optimization  parameter to  'corr_<int>',
+    the integer will be the percent rate from 0 to 100 and will act like a filter,
+    every feature that is less significant than that, will not be a part of returned dataframe.
+
+    Methods:
+
+        __init__(optimize_for, optimization[, 'corr_20'], verbose[, False]) <- optimize_for  (str) are the target columns (labels).
+                                                                               optimization  (str) is the method used to optimize.
+                                                                               If 'verbose' is True, then everytime a transformation is made,
+                                                                               it will print out the information about it.
+
+        new_pipe(pipe_set, always_active[, True]) <- creates a new pipe (ordered),
+                                                     pipe_set is expected to be a tuple of name and object
+                                                     ( in that order ). always_active  does not have any functionality
+                                                     at this moment. It is expected for it to be a indicator for automatic
+                                                     dataframe modeling for best predictions later on.
+    
+        show_pipeline() <- returns an ordered list with all current pipes.
+
+        fit(X, y) <- returns itself.
+
+        transform(X, y) <- performs all transformations (from all pipes) on the dataframe, chooses the 
+                           most meaningful features and returns the dataframe.
+
+        fit_transform(X, y) <- combined  fit(X, y)  and  transform(X, y). 
+                               This is advised in most cases just to stay friendly with sklearn module.
+
+    """
 
     def __init__(self, optimize_for, optimization='corr_20', verbose=False):
         Pipesystem.__init__(self, verbose)

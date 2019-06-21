@@ -10,7 +10,6 @@ num_columns = list(df.drop('ocean_proximity', axis=1))
 cat_columns = ['ocean_proximity', ]
 cat_values = [df['ocean_proximity'], ]
 
-
 pipesystem = rd.OptimizedPipesystem(verbose=False, optimize_for='median_house_value', optimization='corr_10')
 pipesystem.new_pipe(('imputer', rd.Imputer(strategy='median')), always_active=True)
 pipesystem.new_pipe(('merger', rd.Merger(cat_columns, cat_values)), always_active=True)

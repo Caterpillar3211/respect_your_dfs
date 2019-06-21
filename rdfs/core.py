@@ -111,3 +111,90 @@ class Imputer(Transformer, TransformerMixin):
             return X_tr
         else:
             return self._imputer.fit_transform(X, y)
+
+
+
+class AttributeAdder(TransformerMixin):
+
+    def __init__(self, name, function, parameters):
+        self.name = name
+        self.function = function
+        self.parameters = parameters
+
+    def new_attribute(self, name, function, parameters):
+        self.name = name
+        self.function = function
+        self.parameters = parameters
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X, y=None):
+        parameters = []
+        for parameter in self.parameters:
+            if isinstance(parameter, str):
+                parameter = X[parameter]
+            parameters.append(parameter)
+        X[self.name] = self.function(*parameters)
+        return X
+
+
+class Pipesystem(TransformerMixin):
+
+    def __init__(self, verbose=False):
+        self._pipes = []
+        self._activated = {}
+        self._verbose = verbose
+
+    def new_pipe(self, pipe_set, always_active=True):
+        name, pipe = pipe_set
+        self._pipes.append((name, pipe))
+        self._activated[name] = True
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X, y=None):
+        for name, pipe in self._pipes:
+            if self._activated[name] == False:
+                continue
+            if self._verbose:
+                print(f'> pushing through \'{name}\' with {pipe}')
+            X = pipe.fit_transform(X)
+        return X
+
+    def show_pipeline(self):
+        out = []
+        for name, _ in self._pipes:
+            if self._activated[name]:
+                out.append(name)
+        return out
+
+    def activate_array(self, array):
+        for value, name, _ in zip(array, self._pipes):
+            if not value:
+                self._disable_pipe(name)
+
+    def _disable_pipe(self, name):
+        self._activated[name] = False
+
+
+class OptimizedPipesystem(Pipesystem):
+
+    def __init__(self, optimize_for, optimization='corr_20', verbose=False):
+        Pipesystem.__init__(self, verbose)
+        self._target = optimize_for
+        self._optimization = optimization
+        self._best_parameters = []
+
+    def transform(self, X, y=None):
+        X = Pipesystem.transform(self, X, y)
+        opt = getattr(self, '_optimization', 'corr_20')
+
+        if opt[:5] == 'corr_':
+            threshold = int(opt[5:]) / 100
+            corr_table = X.corr()[getattr(self, '_target')].sort_values(ascending=False).to_dict()
+            
+            self._best_parameters = [name for name in corr_table if abs(corr_table[name]) >= threshold]
+
+        return X[self._best_parameters]
